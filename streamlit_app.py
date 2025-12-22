@@ -48,8 +48,8 @@ tab1, tab2 = st.tabs(["📷 צילום ארוחה", "✍️ הקלדה ידני�
 with tab1:
     file = st.file_uploader("העלה תמונה", type=["jpg", "png", "jpeg"])
     if file and st.button("נתח תמונה"):
-        img = Image.open(file)
-        analyze_and_save(img, is_image=True)
+        # אנחנו מעבירים את ה-file כפי שהוא, בלי Image.open
+        analyze_and_save(file, is_image=True)
 
 with tab2:
     text_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 2 פרוסות לחם עם חומוס")
