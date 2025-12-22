@@ -8,7 +8,7 @@ import pandas as pd
 # הגדרות API
 genai.configure(api_key="AIzaSyB-uBsl_tshkxja6UXies5pVRq8O5bYkZY")
 
-st.title("https://docs.google.com/spreadsheets/d/1EPVoO5Yx8CV8ZcO_6UdZmO8hwnVpUueB8_y4yEd_33E/edit?usp=sharing")
+st.title("🍎 יומן תזונה חכם מסונכרן לענן")
 
 # חיבור ל-Google Sheets (הגדרת הקישור תתבצע ב-Secrets של Streamlit)
 conn = st.connection("gsheets", type=GSheetsConnection)
