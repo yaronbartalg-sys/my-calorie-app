@@ -21,10 +21,11 @@ food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 2 פרו
 
 if st.button("חשב ושמור"):
     if food_input:
-            try:
+          try:
             # 1. ניתוח עם AI
             prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
             response = model.generate_content(f"{prompt} \n Input: {food_input}")
+            
             res = response.text.strip().split(',')
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
@@ -46,7 +47,6 @@ if st.button("חשב ושמור"):
                 st.success(f"נשמר: {name}")
             else:
                 st.error("ה-AI לא החזיר פורמט תקין.")
-            
          
             # 2. עיבוד התשובה
             res = response.text.strip().split(',')
