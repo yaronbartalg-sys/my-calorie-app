@@ -2,60 +2,57 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import google.generativeai as genai
 from PIL import Image
-import datetime
 import pandas as pd
 
-# הגדרות API
-genai.configure(api_key="AIzaSyB-uBsl_tshkxja6UXies5pVRq8O5bYkZY")
+# הגדרת כותרת
+st.set_page_config(page_title="מחשבון תזונה AI")
+st.title("🍎 מחשבון תזונה חכם")
 
-st.title("🍎 יומן תזונה חכם מסונכרן לענן")
+# חיבור ל-Secrets (API ו-Google Sheets)
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error("חסר מפתח API או הגדרות Secrets ב-Streamlit Cloud")
 
-# חיבור ל-Google Sheets (הגדרת הקישור תתבצע ב-Secrets של Streamlit)
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# פונקציה לשמירת נתונים לגיליון
-def save_to_sheet(food_name, calories, protein):
-    # קריאת הנתונים הקיימים
-    existing_data = conn.read(worksheet="Sheet1")
+# פונקציה לניתוח ושמירה
+def analyze_and_save(user_input, is_image=False):
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
     
-    # יצירת שורה חדשה
-    new_row = pd.DataFrame([{
-        "Date": datetime.date.today().strftime("%Y-%m-%d"),
-        "Time": datetime.datetime.now().strftime("%H:%M"),
-        "Food_Item": food_name,
-        "Calories": calories,
-        "Proteins": protein
-    }])
-    
-    # עדכון הגיליון
-    updated_df = pd.concat([existing_data, new_row], ignore_index=True)
-    conn.update(worksheet="Sheet1", data=updated_df)
-    st.success("הנתונים נשמרו ב-Google Sheets!")
-
-# --- ממשק המשתמש ---
-uploaded_file = st.file_uploader("צלם ארוחה...", type=["jpg", "png"])
-
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, width=300)
-    
-    if st.button("נתח ושמור"):
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # הנחייה לקבלת נתונים מובנים
-        prompt = "Analyze this food. Return ONLY a comma-separated list: Food Name, Calories (number), Protein (number)."
-        
-        response = model.generate_content([prompt, image])
-        res_text = response.text.split(',')
-        
-        if len(res_text) >= 3:
-            name, cal, prot = res_text[0].strip(), res_text[1].strip(), res_text[2].strip()
-            st.write(f"זיהיתי: {name} ({cal} קלוריות)")
+    with st.spinner('מנתח...'):
+        if is_image:
+            response = model.generate_content([prompt, user_input])
+        else:
+            response = model.generate_content(prompt + " Input: " + user_input)
             
-            # שמירה לענן
-            save_to_sheet(name, cal, prot)
+        res = response.text.split(',')
+        if len(res) >= 3:
+            name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
+            # שמירה ל-Google Sheets
+            df = conn.read(worksheet="Sheet1")
+            new_data = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
+            updated_df = pd.concat([df, new_data], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=updated_df)
+            st.success(f"נשמר: {name} ({cal} קלוריות)")
 
-# הצגת היסטוריה מהענן
-st.subheader("היסטוריה מ-Google Sheets")
-data = conn.read(worksheet="Sheet1")
-st.dataframe(data.tail(10)) # מציג את 10 הארוחות האחרונות
+# --- ממשק משתמש ---
+tab1, tab2 = st.tabs(["📷 צילום ארוחה", "✍️ הקלדה ידנית"])
+
+with tab1:
+    file = st.file_uploader("העלה תמונה", type=["jpg", "png", "jpeg"])
+    if file and st.button("נתח תמונה"):
+        img = Image.open(file)
+        analyze_and_save(img, is_image=True)
+
+with tab2:
+    text_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 2 פרוסות לחם עם חומוס")
+    if text_input and st.button("חשב ושמור"):
+        analyze_and_save(text_input, is_image=False)
+
+st.divider()
+st.subheader("📋 יומן ארוחות")
+try:
+    st.dataframe(conn.read(worksheet="Sheet1").tail(10))
+except:
+    st.write("הטבלה ריקה או לא מחוברת.")
