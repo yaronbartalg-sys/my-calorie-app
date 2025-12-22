@@ -17,24 +17,36 @@ except Exception as e:
 
 # פונקציה לניתוח ושמירה
 def analyze_and_save(user_input, is_image=False):
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
-    prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
-    
-    with st.spinner('מנתח...'):
-        if is_image:
-            response = model.generate_content([prompt, user_input])
-        else:
-            response = model.generate_content(prompt + " Input: " + user_input)
+    try:
+        # שינוי שם המודל לפורמט מלא ומפורש
+        model = genai.GenerativeModel('gemini-1.5-flash') 
+        prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
+        
+        with st.spinner('מנתח...'):
+            if is_image:
+                response = model.generate_content([prompt, user_input])
+            else:
+                response = model.generate_content(prompt + " Input: " + user_input)
             
-        res = response.text.split(',')
-        if len(res) >= 3:
-            name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
-            # שמירה ל-Google Sheets
-            df = conn.read(worksheet="Sheet1")
-            new_data = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
-            updated_df = pd.concat([df, new_data], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=updated_df)
-            st.success(f"נשמר: {name} ({cal} קלוריות)")
+            if not response.text:
+                st.error("הבינה המלאכותית לא החזירה תשובה. נסה שוב.")
+                return
+
+            res = response.text.split(',')
+            if len(res) >= 3:
+                name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
+                
+                # קריאת הנתונים ועדכון
+                df = conn.read(worksheet="Sheet1")
+                new_data = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
+                updated_df = pd.concat([df, new_data], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=updated_df)
+                st.success(f"נשמר: {name} ({cal} קלוריות)")
+            else:
+                st.error(f"התשובה מגוגל לא הייתה בפורמט הנכון: {response.text}")
+                
+    except Exception as e:
+        st.error(f"שגיאה בתקשורת עם גוגל: {str(e)}")
 
 # --- ממשק משתמש ---
 tab1, tab2 = st.tabs(["📷 צילום ארוחה", "✍️ הקלדה ידנית"])
