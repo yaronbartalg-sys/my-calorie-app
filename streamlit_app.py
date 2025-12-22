@@ -19,6 +19,7 @@ except Exception as e:
 # פונקציה לניתוח ושמירה
 def analyze_and_save(user_input, is_image=False):
     try:
+        # שימוש במודל יציב (מס' 19 ברשימה שלך)
         model = genai.GenerativeModel('gemini-flash-latest') 
         prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
         
@@ -32,18 +33,22 @@ def analyze_and_save(user_input, is_image=False):
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
                 
-                # קריאת הנתונים בזהירות
-                df = conn.read(worksheet="Sheet1")
+                # יצירת השורה החדשה
                 new_row = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
                 
-                # אם הגיליון ריק, פשוט נשתמש בשורה החדשה
-                if df.empty:
+                # קריאה עם 'מנגנון בטיחות'
+                try:
+                    existing_df = conn.read(worksheet="Sheet1")
+                    updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+                except:
+                    # אם הגיליון ריק לגמרי או שיש שגיאת קריאה, ניצור דאטה-פריים חדש
                     updated_df = new_row
-                else:
-                    updated_df = pd.concat([df, new_row], ignore_index=True)
                 
+                # עדכון הגיליון
                 conn.update(worksheet="Sheet1", data=updated_df)
-                st.success(f"נשמר: {name}")
+                st.success(f"נשמר בהצלחה: {name}")
+            else:
+                st.error("הבינה המלאכותית לא החזירה פורמט תקין. נסה שוב.")
     except Exception as e:
         st.error(f"שגיאה: {str(e)}")
 
