@@ -10,7 +10,7 @@ st.title("🍎 מחשבון תזונה חכם")
 
 # חיבור ל-Secrets (API ו-Google Sheets)
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    genai.configure(api_key=st.secrets["AIzaSyB-uBsl_tshkxja6UXies5pVRq8O5bYkZY"])
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
     st.error("חסר מפתח API או הגדרות Secrets ב-Streamlit Cloud")
@@ -18,7 +18,7 @@ except Exception as e:
 # פונקציה לניתוח ושמירה
 def analyze_and_save(user_input, is_image=False):
     try:
-        # שינוי שם המודל לפורמט מלא ומפורש
+        # שימוש בגרסה היציבה ביותר
         model = genai.GenerativeModel('gemini-1.5-flash-latest') 
         prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
         
@@ -28,25 +28,21 @@ def analyze_and_save(user_input, is_image=False):
             else:
                 response = model.generate_content(prompt + " Input: " + user_input)
             
-            if not response.text:
-                st.error("הבינה המלאכותית לא החזירה תשובה. נסה שוב.")
-                return
-
             res = response.text.split(',')
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
-                
-                # קריאת הנתונים ועדכון
                 df = conn.read(worksheet="Sheet1")
                 new_data = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
                 updated_df = pd.concat([df, new_data], ignore_index=True)
                 conn.update(worksheet="Sheet1", data=updated_df)
-                st.success(f"נשמר: {name} ({cal} קלוריות)")
-            else:
-                st.error(f"התשובה מגוגל לא הייתה בפורמט הנכון: {response.text}")
+                st.success(f"נשמר: {name}")
                 
     except Exception as e:
-        st.error(f"שגיאה בתקשורת עם גוגל: {str(e)}")
+        st.error(f"שגיאה: {str(e)}")
+        # בדיקה אילו דגמים זמינים עבור המפתח שלך
+        st.write("בודק דגמים זמינים...")
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        st.write("הדגמים שאתה יכול להשתמש בהם:", available_models)
 
 # --- ממשק משתמש ---
 tab1, tab2 = st.tabs(["📷 צילום ארוחה", "✍️ הקלדה ידנית"])
