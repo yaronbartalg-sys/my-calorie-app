@@ -19,36 +19,26 @@ except Exception as e:
 # פונקציה לניתוח ושמירה
 def analyze_and_save(user_input, is_image=False):
     try:
-        # שימוש במודל יציב (מס' 19 ברשימה שלך)
         model = genai.GenerativeModel('gemini-flash-latest') 
         prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
         
         with st.spinner('מנתח...'):
             if is_image:
-                response = model.generate_content([prompt, user_input])
+                # תיקון השגיאה: קריאת נתוני התמונה כ-Bytes
+                image_data = [{"mime_type": "image/jpeg", "data": user_input.getvalue()}]
+                response = model.generate_content([prompt, image_data[0]])
             else:
                 response = model.generate_content(prompt + " Input: " + user_input)
             
+            # שאר הקוד נשאר אותו דבר...
             res = response.text.split(',')
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
-                
-                # יצירת השורה החדשה
+                df = conn.read(worksheet="Sheet1")
                 new_row = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
-                
-                # קריאה עם 'מנגנון בטיחות'
-                try:
-                    existing_df = conn.read(worksheet="Sheet1")
-                    updated_df = pd.concat([existing_df, new_row], ignore_index=True)
-                except:
-                    # אם הגיליון ריק לגמרי או שיש שגיאת קריאה, ניצור דאטה-פריים חדש
-                    updated_df = new_row
-                
-                # עדכון הגיליון
+                updated_df = pd.concat([df, new_row], ignore_index=True)
                 conn.update(worksheet="Sheet1", data=updated_df)
-                st.success(f"נשמר בהצלחה: {name}")
-            else:
-                st.error("הבינה המלאכותית לא החזירה פורמט תקין. נסה שוב.")
+                st.success(f"נשמר: {name}")
     except Exception as e:
         st.error(f"שגיאה: {str(e)}")
 
