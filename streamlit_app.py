@@ -8,72 +8,73 @@ from datetime import datetime
 st.set_page_config(page_title="מחשבון תזונה AI", layout="centered")
 st.title("🍎 יומן תזונה חכם")
 
-# חיבור ל-Gemini - שימוש בשם המדויק מהרשימה שלך
+# חיבור ל-Gemini
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
+    # מחר נשתמש ב-1.5 פלאש כי הוא הכי יציב
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"שגיאת אתחול: {e}")
+    st.error(f"שגיאת חיבור: {e}")
 
-# חיבור לגוגל שיטס
+# חיבור לגיליון
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# פונקציה לקריאת הנתונים
-def load_data():
-    try:
-        return conn.read(worksheet="Sheet1", ttl="0")
-    except:
-        return pd.DataFrame(columns=["Date", "Food", "Calories", "Protein"])
-
-# ממשק המשתמש
-food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: קערת שיבולת שועל עם בננה")
+# ממשק משתמש
+food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 2 פרוסות לחם עם אבוקדו")
 
 if st.button("חשב ושמור ביומן"):
     if food_input:
         try:
-            prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas. Example: תפוח, 52, 0.3"
+            # 1. ניתוח עם AI
+            prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
+            response = model.generate_content(f"{prompt} \n Input: {food_input}")
             
-            with st.spinner('מנתח את המנה...'):
-                response = model.generate_content(f"{prompt} \n Input: {food_input}")
-                res = response.text.strip().split(',')
-            
+            res = response.text.strip().split(',')
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
-                today = datetime.now().strftime("%d/%m/%Y")
+                today_date = datetime.now().strftime("%d/%m/%Y")
                 
-                # מניעת דריסה: קוראים את הקיים, מוסיפים שורה, ומעדכנים הכל
-                existing_df = load_data()
-                new_row = pd.DataFrame([{"Date": today, "Food": name, "Calories": int(cal), "Protein": float(prot)}])
+                # 2. פתרון ה-Overwrite: קוראים את הקיים ומוסיפים לסוף
+                try:
+                    existing_df = conn.read(worksheet="Sheet1")
+                except:
+                    existing_df = pd.DataFrame(columns=["Date", "Food", "Calories", "Protein"])
+                
+                new_row = pd.DataFrame([{
+                    "Date": today_date,
+                    "Food": name, 
+                    "Calories": int(cal), 
+                    "Protein": float(prot)
+                }])
+                
                 updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 
+                # 3. עדכון הגיליון
                 conn.update(worksheet="Sheet1", data=updated_df)
-                st.success(f"נשמר בהצלחה: {name}")
-                st.rerun() # מרענן את הדף כדי לעדכן את הטבלה והסיכומים
-            else:
-                st.error("ה-AI החזיר תשובה בפורמט לא ברור. נסה שוב.")
-                
+                st.success(f"נשמר: {name}")
+                st.rerun() # רענון לעדכון הסיכומים
         except Exception as e:
             st.error(f"שגיאה: {str(e)}")
 
-# --- הצגת סיכומים והיסטוריה ---
+# --- חלק הסיכומים והתצוגה ---
 st.divider()
-data = load_data()
-
-if not data.empty:
-    # המרת נתונים למספרים למקרה שנשמרו כטקסט
-    data['Calories'] = pd.to_numeric(data['Calories'], errors='coerce').fillna(0)
-    data['Protein'] = pd.to_numeric(data['Protein'], errors='coerce').fillna(0)
-    
-    # סיכום יומי
-    today_str = datetime.now().strftime("%d/%m/%Y")
-    today_data = data[data['Date'] == today_str]
-    
-    col1, col2 = st.columns(2)
-    col1.metric("קלוריות היום", f"{int(today_data['Calories'].sum())} kcal")
-    col2.metric("חלבון היום", f"{today_data['Protein'].sum():.1f} g")
-    
-    st.subheader("📋 ארוחות אחרונות")
-    st.dataframe(data.tail(10), use_container_width=True)
-else:
-    st.info("היומן ריק. התחל להזין מאכלים!")
+try:
+    df = conn.read(worksheet="Sheet1")
+    if not df.empty:
+        # המרה למספרים למקרה של תקלות בפורמט
+        df['Calories'] = pd.to_numeric(df['Calories'], errors='coerce').fillna(0)
+        df['Protein'] = pd.to_numeric(df['Protein'], errors='coerce').fillna(0)
+        
+        # סינון להיום בלבד
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        today_data = df[df['Date'] == today_str]
+        
+        # הצגת סיכום יומי בתיבות (Metrics)
+        col1, col2 = st.columns(2)
+        col1.metric("סה\"כ קלוריות היום", f"{int(today_data['Calories'].sum())}")
+        col2.metric("סה\"כ חלבון היום", f"{today_data['Protein'].sum():.1f}g")
+        
+        st.subheader("📋 5 ארוחות אחרונות")
+        st.table(df.tail(5))
+except:
+    st.info("ממתין לנתונים ראשונים...")
