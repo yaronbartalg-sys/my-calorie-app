@@ -10,7 +10,8 @@ st.title("🍎 מחשבון תזונה חכם")
 
 # חיבור ל-Secrets (API ו-Google Sheets)
 try:
-    genai.configure(api_key=st.secrets["AIzaSyB-uBsl_tshkxja6UXies5pVRq8O5bYkZY"])
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
     st.error("חסר מפתח API או הגדרות Secrets ב-Streamlit Cloud")
