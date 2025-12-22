@@ -64,5 +64,5 @@ try:
         st.table(history_df.tail(10))
     else:
         st.info("היומן ריק כרגע.")
-except:
+except Exception:
  st.write("לא ניתן להציג את ההיסטוריה כרגע.")
