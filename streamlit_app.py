@@ -20,7 +20,7 @@ except Exception as e:
 def analyze_and_save(user_input, is_image=False):
     try:
         # שימוש בגרסה היציבה ביותר
-        model = genai.GenerativeModel(models/'gemini-1.5-flash') 
+        model = genai.GenerativeModel('gemini-1.5-flash') 
         prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
         
         with st.spinner('מנתח...'):
