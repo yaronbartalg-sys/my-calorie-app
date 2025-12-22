@@ -19,7 +19,6 @@ except Exception as e:
 # פונקציה לניתוח ושמירה
 def analyze_and_save(user_input, is_image=False):
     try:
-        # שימוש בגרסה היציבה ביותר
         model = genai.GenerativeModel('gemini-2.0-flash') 
         prompt = "Analyze this food. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
         
@@ -32,18 +31,21 @@ def analyze_and_save(user_input, is_image=False):
             res = response.text.split(',')
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
+                
+                # קריאת הנתונים בזהירות
                 df = conn.read(worksheet="Sheet1")
-                new_data = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
-                updated_df = pd.concat([df, new_data], ignore_index=True)
+                new_row = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
+                
+                # אם הגיליון ריק, פשוט נשתמש בשורה החדשה
+                if df.empty:
+                    updated_df = new_row
+                else:
+                    updated_df = pd.concat([df, new_row], ignore_index=True)
+                
                 conn.update(worksheet="Sheet1", data=updated_df)
                 st.success(f"נשמר: {name}")
-                
     except Exception as e:
         st.error(f"שגיאה: {str(e)}")
-        # בדיקה אילו דגמים זמינים עבור המפתח שלך
-        st.write("בודק דגמים זמינים...")
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        st.write("הדגמים שאתה יכול להשתמש בהם:", available_models)
 
 # --- ממשק משתמש ---
 tab1, tab2 = st.tabs(["📷 צילום ארוחה", "✍️ הקלדה ידנית"])
