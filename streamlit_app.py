@@ -1,68 +1,82 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-import google.generativeai as genai
 import pandas as pd
+import google.generativeai as genai
+from streamlit_gsheets import GSheetsConnection
 
-# הגדרות בסיסיות
-st.set_page_config(page_title="מחשבון תזונה AI", layout="centered")
-st.title("🍎 יומן תזונה חכם (טקסט בלבד)")
+# הגדרות כותרת
+st.title("🍎 מחשבון תזונה AI")
 
-# חיבור ל-Secrets
+# חיבור ל-Gemini
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    model = genai.GenerativeModel('gemini-flash-latest')
 except Exception as e:
-    st.error(f"שגיאת חיבור: {e}")
+    st.error(f"שגיאה בחיבור ל-Gemini: {e}")
 
-# פונקציה לניתוח ושמירה
-def analyze_and_save(user_text):
-    try:
-        # שימוש במודל היציב ביותר עבורך
-        model = genai.GenerativeModel('gemini-flash-latest') 
-        
-        prompt = """
-        Analyze the food described. Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas.
-        Example response: פיצה מרגריטה, 300, 12
-        """
-        
-        with st.spinner('מנתח נתונים...'):
-            response = model.generate_content(f"{prompt} \n Input: {user_text}")
+# חיבור לגיליון
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# תיבת טקסט לקלט
+food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 2 פרוסות לחם עם חמאת בוטנים")
+
+if st.button("חשב ושמור"):
+    if food_input:
+        try:
+            try:
+            # 1. ניתוח עם AI
+            prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
+            response = model.generate_content(f"{prompt} \n Input: {food_input}")
             
-            # עיבוד התשובה
             res = response.text.strip().split(',')
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
                 
-                # קריאה ועדכון הגיליון
-                df = conn.read(worksheet="Sheet1")
-                new_data = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
-                updated_df = pd.concat([df, new_data], ignore_index=True)
+                # --- התיקון כאן ---
+                # קריאת הנתונים הקיימים (כדי לדעת איפה הסוף)
+                existing_data = conn.read(worksheet="Sheet1")
                 
+                # יצירת השורה החדשה כ-DataFrame
+                new_row = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
+                
+                # חיבור השורה החדשה לסוף הנתונים הקיימים
+                updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+                
+                # עדכון הגיליון עם כל המידע המצטבר
                 conn.update(worksheet="Sheet1", data=updated_df)
-                st.success(f"נשמר: {name} | {cal} קלוריות | {prot} גרם חלבון")
+                # ------------------
+                
+                st.success(f"נשמר: {name}")
             else:
-                st.error("הבינה המלאכותית לא החזירה תשובה בפורמט הנכון. נסה שוב.")
-    except Exception as e:
-        st.error(f"שגיאה בתהליך: {str(e)}")
+                st.error("ה-AI לא החזיר פורמט תקין.")
+            
+         
+            # 2. עיבוד התשובה
+            res = response.text.strip().split(',')
+            if len(res) >= 3:
+                name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
+                
+                # 3. שמירה לגיליון - הדרך הבטוחה
+                # אנחנו קוראים את הנתונים הקיימים
+                df = conn.read(worksheet="Sheet1")
+                
+                # יוצרים שורה חדשה
+                new_row = pd.DataFrame([{"Food": name, "Calories": cal, "Protein": prot}])
+                
+                # מחברים ומעדכנים
+                updated_df = pd.concat([df, new_row], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=updated_df)
+                
+                st.success(f"נשמר: {name} ({cal} קלוריות)")
+            else:
+                st.error("ה-AI לא החזיר תשובה בפורמט תקין.")
+        except Exception as e:
+            st.error(f"שגיאה: {str(e)}")
 
-# ממשק המשתמש
-food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: חביתה מ-2 ביצים ופרוסת לחם")
-
-if st.button("חשב ושמור ביומן"):
-    if food_input:
-        analyze_and_save(food_input)
-    else:
-        st.warning("נא להזין טקסט קודם.")
-
+# הצגת היסטוריה
 st.divider()
-
-# הצגת ההיסטוריה
-st.subheader("📋 10 ארוחות אחרונות")
+st.subheader("📋 ארוחות אחרונות")
 try:
-    history_df = conn.read(worksheet="Sheet1")
-    if not history_df.empty:
-        st.table(history_df.tail(10))
-    else:
-        st.info("היומן ריק כרגע.")
-except Exception:
- st.write("לא ניתן להציג את ההיסטוריה כרגע.")
+    data = conn.read(worksheet="Sheet1")
+    st.table(data.tail(5))
+except:
+    st.write("הגיליון ריק או לא מחובר כראוי.")
