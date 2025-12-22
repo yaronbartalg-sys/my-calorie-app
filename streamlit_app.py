@@ -4,84 +4,76 @@ import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 
-# הגדרות כותרת
+# הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="centered")
 st.title("🍎 יומן תזונה חכם")
 
-# חיבור ל-Gemini
+# חיבור ל-Gemini - שימוש בשם המדויק מהרשימה שלך
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-flash-latest')
+    # ניסיון להשתמש ב-2.0 פלאש, אם לא עובד נסה 'gemini-1.5-flash-8b'
+    model = genai.GenerativeModel('gemini-2.0-flash')
 except Exception as e:
-    st.error(f"שגיאה בחיבור ל-Gemini: {e}")
+    st.error(f"שגיאת אתחול: {e}")
 
-# חיבור לגיליון
+# חיבור לגוגל שיטס
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# ממשק משתמש
-food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 2 ביצים וסלט")
+# פונקציה לקריאת הנתונים
+def load_data():
+    try:
+        return conn.read(worksheet="Sheet1", ttl="0")
+    except:
+        return pd.DataFrame(columns=["Date", "Food", "Calories", "Protein"])
 
-if st.button("חשב ושמור"):
+# ממשק המשתמש
+food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: קערת שיבולת שועל עם בננה")
+
+if st.button("חשב ושמור ביומן"):
     if food_input:
         try:
-            # 1. ניתוח עם AI
-            prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
-            response = model.generate_content(f"{prompt} \n Input: {food_input}")
+            prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas. Example: תפוח, 52, 0.3"
             
-            res = response.text.strip().split(',')
+            with st.spinner('מנתח את המנה...'):
+                response = model.generate_content(f"{prompt} \n Input: {food_input}")
+                res = response.text.strip().split(',')
+            
             if len(res) >= 3:
                 name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
-                current_date = datetime.now().strftime("%d/%m/%Y")
+                today = datetime.now().strftime("%d/%m/%Y")
                 
-                # 2. קריאת הנתונים הקיימים
-                # הערה: אם הגיליון ריק, הוא יצור DataFrame חדש
-                df = conn.read(worksheet="Sheet1")
+                # מניעת דריסה: קוראים את הקיים, מוסיפים שורה, ומעדכנים הכל
+                existing_df = load_data()
+                new_row = pd.DataFrame([{"Date": today, "Food": name, "Calories": int(cal), "Protein": float(prot)}])
+                updated_df = pd.concat([existing_df, new_row], ignore_index=True)
                 
-                # 3. יצירת השורה החדשה (כולל תאריך)
-                new_row = pd.DataFrame([{
-                    "Date": current_date,
-                    "Food": name, 
-                    "Calories": int(cal), 
-                    "Protein": float(prot)
-                }])
-                
-                # 4. איחוד ועדכון (מניעת דריסה)
-                updated_df = pd.concat([df, new_row], ignore_index=True)
                 conn.update(worksheet="Sheet1", data=updated_df)
-                
-                st.success(f"נשמר: {name}")
-                st.balloons()
+                st.success(f"נשמר בהצלחה: {name}")
+                st.rerun() # מרענן את הדף כדי לעדכן את הטבלה והסיכומים
             else:
-                st.error("ה-AI לא החזיר פורמט תקין.")
+                st.error("ה-AI החזיר תשובה בפורמט לא ברור. נסה שוב.")
+                
         except Exception as e:
-            st.error(f"שגיאה בשמירה: {str(e)}")
+            st.error(f"שגיאה: {str(e)}")
 
-# --- חלק הסיכומים והתצוגה ---
+# --- הצגת סיכומים והיסטוריה ---
 st.divider()
+data = load_data()
 
-try:
-    # קריאת כל הנתונים
-    all_data = conn.read(worksheet="Sheet1")
+if not data.empty:
+    # המרת נתונים למספרים למקרה שנשמרו כטקסט
+    data['Calories'] = pd.to_numeric(data['Calories'], errors='coerce').fillna(0)
+    data['Protein'] = pd.to_numeric(data['Protein'], errors='coerce').fillna(0)
     
-    if not all_data.empty:
-        # המרת עמודות למספרים ליתר ביטחון
-        all_data['Calories'] = pd.to_numeric(all_data['Calories'], errors='coerce')
-        all_data['Protein'] = pd.to_numeric(all_data['Protein'], errors='coerce')
-        
-        # סיכום לפי יום (היום הנוכחי)
-        today = datetime.now().strftime("%d/%m/%Y")
-        today_data = all_data[all_data['Date'] == today]
-        
-        # תצוגת סיכום יומית בתיבות מעוצבות
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("סה\"כ קלוריות היום", f"{int(today_data['Calories'].sum())} קק\"ל")
-        with col2:
-            st.metric("סה\"כ חלבון היום", f"{today_data['Protein'].sum():.1f} גרם")
-        
-        st.subheader("📋 הארוחות האחרונות שלך")
-        st.dataframe(all_data.tail(10), use_container_width=True)
-    else:
-        st.info("עדיין אין נתונים ביומן.")
-except Exception as e:
-    st.write("ממתין לנתונים ראשונים...")
+    # סיכום יומי
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    today_data = data[data['Date'] == today_str]
+    
+    col1, col2 = st.columns(2)
+    col1.metric("קלוריות היום", f"{int(today_data['Calories'].sum())} kcal")
+    col2.metric("חלבון היום", f"{today_data['Protein'].sum():.1f} g")
+    
+    st.subheader("📋 ארוחות אחרונות")
+    st.dataframe(data.tail(10), use_container_width=True)
+else:
+    st.info("היומן ריק. התחל להזין מאכלים!")
