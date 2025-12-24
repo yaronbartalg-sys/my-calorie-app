@@ -92,4 +92,4 @@ try:
             st.progress(min(total_prot / target_prot, 1.0))
 
         st.divider()
-        st
+        
