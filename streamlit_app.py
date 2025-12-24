@@ -12,7 +12,7 @@ st.title("🍎 יומן תזונה עם יעדים יומיים")
 
 # חיבור ל-Gemini 1.5 Flash 8B
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash-8b-latest')
+model = genai.GenerativeModel('gemini-1.5-flash-8b')
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- ממשק הזנה ---
