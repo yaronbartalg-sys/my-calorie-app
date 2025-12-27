@@ -20,8 +20,8 @@ st.title("🍎 יומן תזונה חכם")
 # חיבור ל-Gemini - מעבר למודל היציב והנדיב ביותר
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # השם הזה מבטיח את המכסה הכי גדולה (1,500 ביום)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+   # ננסה את השם הסטנדרטי ביותר שעובד ב-v1beta
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"שגיאה בחיבור ל-AI: {e}")
 
