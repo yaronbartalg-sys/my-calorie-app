@@ -21,7 +21,7 @@ st.title("🍎 יומן תזונה חכם")
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     # שימוש בשם המדויק מהרשימה ששלחת
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel('gemini-flash-lite-latest')
 except Exception as e:
     st.error(f"שגיאה באתחול: {e}")
 
