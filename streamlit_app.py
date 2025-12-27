@@ -78,7 +78,6 @@ st.divider()
 try:
     data = conn.read(worksheet="Sheet1", ttl=0)
     if not data.empty:
-        # ניקוי נתונים
         for c in ['Calories', 'Protein', 'Fat', 'Fiber']:
             data[c] = pd.to_numeric(data[c], errors='coerce').fillna(0)
         
@@ -110,7 +109,6 @@ try:
             c_row[1].write(f"🔥 {row['Calories']}")
             c_row[2].write(f"💪 {row['Protein']}g")
             
-            # עריכה
             with c_row[4]:
                 with st.popover("✏️"):
                     n_name = st.text_input("שם", value=row['Food'], key=f"e_n_{idx}")
@@ -123,7 +121,6 @@ try:
                         conn.update(worksheet="Sheet1", data=data)
                         st.rerun()
             
-            # מחיקה
             if c_row[5].button("🗑️", key=f"d_{idx}"):
                 new_df = data.drop(idx)
                 conn.update(worksheet="Sheet1", data=new_df)
@@ -133,7 +130,8 @@ try:
         st.divider()
         st.subheader("📅 צריכה שבועית")
         data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
-        weekly_summary = data.groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
+        weekly_summary = data.dropna(subset=['Date_dt']).groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
         st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
 
-except Exception
+except Exception as e:
+    st.info("ממתין לנתונים...")
