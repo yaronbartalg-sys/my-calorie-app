@@ -13,7 +13,7 @@ with st.sidebar:
     target_cal = st.number_input("יעד קלוריות יומי", value=2000, step=50)
     target_prot = st.number_input("יעד חלבון יומי (גרם)", value=120, step=5)
     st.divider()
-    st.info("האפליקציה משתמשת ב-Gemini 2.0")
+    st.info("האפליקציה משתמשת ב-Gemini 1.5")
 
 st.title("🍎 יומן תזונה חכם")
 
