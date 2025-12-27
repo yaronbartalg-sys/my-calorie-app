@@ -17,11 +17,11 @@ with st.sidebar:
 
 st.title("🍎 יומן תזונה חכם")
 
-# חיבור ל-Gemini 2.0
+# חיבור ל-Gemini - מעבר למודל היציב והנדיב ביותר
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # השם המעודכן לגרסה 2
-    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    # השם הזה מבטיח את המכסה הכי גדולה (1,500 ביום)
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
 except Exception as e:
     st.error(f"שגיאה בחיבור ל-AI: {e}")
 
