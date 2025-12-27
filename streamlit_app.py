@@ -3,6 +3,7 @@ import pandas as pd
 import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
+import plotly.graph_objects as go
 
 # הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
@@ -34,8 +35,8 @@ with st.sidebar:
     st.divider()
     steps = st.number_input("צעדים היום", value=0, step=500)
     step_bonus = int(steps * 0.04) 
-    
-    st.info(f"🎯 יעד קלוריות: {t_cal + step_bonus} (כולל {step_bonus} בונוס פעילות)")
+    total_target = t_cal + step_bonus
+    st.info(f"🎯 יעד קלוריות כולל: {total_target}")
 
 st.title("🍎 יומן תזונה חכם")
 
@@ -43,7 +44,6 @@ st.title("🍎 יומן תזונה חכם")
 food_query = st.text_input("מה אכלת?", placeholder="לדוגמה: קערת אורז עם עדשים")
 
 if food_query:
-    # מנגנון למניעת הרצה כפולה של ה-AI על אותו טקסט
     if 'last_q' not in st.session_state or st.session_state.last_q != food_query:
         with st.spinner('מנתח נתונים...'):
             prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
@@ -58,22 +58,19 @@ if food_query:
 
     if 'preview' in st.session_state:
         p = st.session_state.preview
-        st.warning(f"🔍 **בדיקה לפני שמירה:** {p['name']} | 🔥 קלוריות: {p['cal']} | 💪 חלבון: {p['prot']}g")
+        st.warning(f"🔍 **בדיקה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
         if st.button("✅ אשר והוסף ליומן"):
-            try:
-                df = conn.read(worksheet="Sheet1")
-                today = datetime.now().strftime("%d/%m/%Y")
-                new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
-                                         "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
-                updated_df = pd.concat([df, new_row], ignore_index=True)
-                conn.update(worksheet="Sheet1", data=updated_df)
-                st.success("הארוחה נוספה!")
-                del st.session_state.preview
-                st.rerun()
-            except Exception as e:
-                st.error(f"שגיאה בשמירה: {e}")
+            df = conn.read(worksheet="Sheet1")
+            today = datetime.now().strftime("%d/%m/%Y")
+            new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
+                                     "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=updated_df)
+            st.success("נוסף!")
+            del st.session_state.preview
+            st.rerun()
 
-# --- תצוגת נתונים וסיכומים ---
+# --- תצוגת נתונים וגרפים ---
 st.divider()
 try:
     data = conn.read(worksheet="Sheet1", ttl=0)
@@ -83,17 +80,38 @@ try:
         
         today_str = datetime.now().strftime("%d/%m/%Y")
         today_df = data[data['Date'] == today_str]
-        
         c_cal = int(today_df['Calories'].sum())
-        rem_cal = (t_cal + step_bonus) - c_cal
+        rem_cal = max(0, total_target - c_cal)
 
-        # מדדים עליונים
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("נאכל היום", f"{c_cal} קק\"ל")
-        col_m2.metric("בונוס צעדים", f"{step_bonus} קק\"ל")
-        col_m3.metric("נותר לצריכה", f"{rem_cal} קק\"ל", delta=rem_cal, delta_color="normal")
+        # --- שורת מדדים וגרף דונאט ---
+        col_stats, col_donut = st.columns([2, 1])
+        
+        with col_stats:
+            st.subheader(f"📊 סיכום להיום ({today_str})")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("נאכל", f"{c_cal} קק\"ל")
+            m2.metric("נותר", f"{rem_cal} קק\"ל")
+            m3.metric("חלבון", f"{today_df['Protein'].sum():.1f}g")
 
-        # טבלת ארוחות עם אפשרות מחיקה
+        with col_donut:
+            # יצירת גרף דונאט
+            fig = go.Figure(data=[go.Pie(labels=['נאכל', 'נותר'], 
+                             values=[c_cal, rem_cal], 
+                             hole=.6, 
+                             marker_colors=['#ff4b4b', '#f0f2f6'],
+                             textinfo='none')])
+            fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
+            st.plotly_chart(fig, use_container_width=True)
+
+        # --- סיכום שבועי ---
+        st.divider()
+        st.subheader("📅 צריכה שבועית")
+        weekly_data = data.copy()
+        weekly_data['Date_dt'] = pd.to_datetime(weekly_data['Date'], format="%d/%m/%Y")
+        weekly_summary = weekly_data.groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
+        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
+
+        # --- רשימת ארוחות עם מחיקה ---
         st.subheader("📋 ארוחות היום")
         for idx, row in today_df.iterrows():
             c_row = st.columns([4, 1, 1, 1, 1])
@@ -106,4 +124,4 @@ try:
                 conn.update(worksheet="Sheet1", data=new_data)
                 st.rerun()
 except:
-    st.info("ממתין לנתונים בגיליון...")
+    st.info("ממתין לנתונים...")
