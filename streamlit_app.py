@@ -41,7 +41,7 @@ with st.sidebar:
 st.title("🍎 יומן תזונה חכם")
 
 # --- ממשק הזנה עם בדיקה לפני שמירה ---
-food_query = st.text_input("מה אכלת?", placeholder="לדוגמה: קערת אורז עם עדשים")
+food_query = st.text_input("מה אכלת?", placeholder="לדוגמה: חביתה משתי ביצים")
 
 if food_query:
     if 'last_q' not in st.session_state or st.session_state.last_q != food_query:
@@ -83,45 +83,7 @@ try:
         c_cal = int(today_df['Calories'].sum())
         rem_cal = max(0, total_target - c_cal)
 
-        # --- שורת מדדים וגרף דונאט ---
+        # --- מדדים וגרף דונאט ---
         col_stats, col_donut = st.columns([2, 1])
-        
         with col_stats:
-            st.subheader(f"📊 סיכום להיום ({today_str})")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("נאכל", f"{c_cal} קק\"ל")
-            m2.metric("נותר", f"{rem_cal} קק\"ל")
-            m3.metric("חלבון", f"{today_df['Protein'].sum():.1f}g")
-
-        with col_donut:
-            # יצירת גרף דונאט
-            fig = go.Figure(data=[go.Pie(labels=['נאכל', 'נותר'], 
-                             values=[c_cal, rem_cal], 
-                             hole=.6, 
-                             marker_colors=['#ff4b4b', '#f0f2f6'],
-                             textinfo='none')])
-            fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
-            st.plotly_chart(fig, use_container_width=True)
-
-        # --- סיכום שבועי ---
-        st.divider()
-        st.subheader("📅 צריכה שבועית")
-        weekly_data = data.copy()
-        weekly_data['Date_dt'] = pd.to_datetime(weekly_data['Date'], format="%d/%m/%Y")
-        weekly_summary = weekly_data.groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
-        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
-
-        # --- רשימת ארוחות עם מחיקה ---
-        st.subheader("📋 ארוחות היום")
-        for idx, row in today_df.iterrows():
-            c_row = st.columns([4, 1, 1, 1, 1])
-            c_row[0].write(f"🍴 {row['Food']}")
-            c_row[1].write(f"🔥 {row['Calories']}")
-            c_row[2].write(f"💪 {row['Protein']}g")
-            c_row[3].write(f"🌾 {row['Fiber']}g")
-            if c_row[4].button("🗑️", key=f"del_{idx}"):
-                new_data = data.drop(idx)
-                conn.update(worksheet="Sheet1", data=new_data)
-                st.rerun()
-except:
-    st.info("ממתין לנתונים...")
+            st.subheader(f"📊 סיכ
