@@ -7,36 +7,34 @@ from datetime import datetime
 # הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="centered")
 
-# --- יעדים בסרגל הצד ---
+# --- הגדרות יעד בסרגל הצד ---
 with st.sidebar:
-    st.header("🎯 יעדים יומיים")
-    target_cal = st.number_input("יעד קלוריות", value=2000, step=50)
-    target_prot = st.number_input("יעד חלבון (גרם)", value=120, step=5)
-    
-    # כפתור עזר למקרה של שגיאות מודל - יציג לך מה זמין
-    if st.button("בדוק מודלים זמינים"):
-        models = [m.name for m in genai.list_models()]
-        st.write(models)
+    st.header("🎯 הגדרות יעד")
+    target_cal = st.number_input("יעד קלוריות יומי", value=2000, step=50)
+    target_prot = st.number_input("יעד חלבון יומי (גרם)", value=120, step=5)
+    st.divider()
+    st.info("מודל פעיל: Gemini 2.0 Flash")
 
 st.title("🍎 יומן תזונה חכם")
 
-# חיבור ל-Gemini
+# חיבור למודל המאושר מהרשימה שלך
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # השם היציב ביותר ל-v1beta
+    # שימוש בשם המדויק מהרשימה ששלחת
     model = genai.GenerativeModel('gemini-2.0-flash')
 except Exception as e:
-    st.error(f"שגיאת חיבור: {e}")
+    st.error(f"שגיאה באתחול: {e}")
 
+# חיבור לגוגל שיטס
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- ממשק הזנה ---
-food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: חביתה וסלט")
+food_input = st.text_input("מה אכלת?", placeholder="לדוגמה: 200 גרם אורז וחזה עוף")
 
-if st.button("חשב ושמור"):
+if st.button("חשב ושמור ביומן"):
     if food_input:
         try:
-            with st.spinner('מנתח...'):
+            with st.spinner('מנתח נתונים...'):
                 prompt = "Return ONLY: Food Name (in Hebrew), Calories (number), Protein (number) separated by commas."
                 response = model.generate_content(f"{prompt} \n Input: {food_input}")
                 res = response.text.strip().split(',')
@@ -45,7 +43,7 @@ if st.button("חשב ושמור"):
                     name, cal, prot = res[0].strip(), res[1].strip(), res[2].strip()
                     today = datetime.now().strftime("%d/%m/%Y")
                     
-                    # פתרון ה-Overwrite
+                    # מניעת דריסה: קריאה, הוספה, ועדכון
                     try:
                         existing_df = conn.read(worksheet="Sheet1")
                     except:
@@ -63,28 +61,32 @@ if st.button("חשב ושמור"):
 # --- תצוגת צריכה יומית (Daily Intake) ---
 st.divider()
 try:
-    data = conn.read(worksheet="Sheet1", ttl=0)
-    if not data.empty:
-        data['Calories'] = pd.to_numeric(data['Calories'], errors='coerce').fillna(0)
-        data['Protein'] = pd.to_numeric(data['Protein'], errors='coerce').fillna(0)
+    df = conn.read(worksheet="Sheet1", ttl=0)
+    if not df.empty:
+        # וידוא עמודות מספריות
+        df['Calories'] = pd.to_numeric(df['Calories'], errors='coerce').fillna(0)
+        df['Protein'] = pd.to_numeric(df['Protein'], errors='coerce').fillna(0)
         
         today_str = datetime.now().strftime("%d/%m/%Y")
-        today_df = data[data['Date'] == today_str]
+        today_df = df[df['Date'] == today_str]
         
         current_cal = int(today_df['Calories'].sum())
         current_prot = today_df['Protein'].sum()
 
-        st.subheader(f"📊 סטטוס להיום ({today_str})")
-        col1, col2 = st.columns(2)
-        with col1:
+        st.subheader(f"📊 סיכום להיום ({today_str})")
+        
+        c1, c2 = st.columns(2)
+        with c1:
             st.metric("קלוריות", f"{current_cal} / {target_cal}")
             st.progress(min(current_cal / target_cal, 1.0))
-        with col2:
+        with c2:
             st.metric("חלבון", f"{current_prot:.1f}g / {target_prot}g")
             st.progress(min(current_prot / target_prot, 1.0))
 
         st.divider()
-        st.write("📋 ארוחות אחרונות מהיום:")
-        st.table(today_df[["Food", "Calories", "Protein"]].tail(5))
+        st.write("📋 ארוחות אחרונות:")
+        st.dataframe(today_df[["Food", "Calories", "Protein"]].tail(10), use_container_width=True)
+    else:
+        st.info("היומן ריק. התחל להזין מאכלים!")
 except:
     st.info("ממתין לנתונים...")
