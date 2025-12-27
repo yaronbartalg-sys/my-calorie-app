@@ -3,3 +3,4 @@ google-generativeai
 st-gsheets-connection
 pandas
 Pillow
+Plotly
