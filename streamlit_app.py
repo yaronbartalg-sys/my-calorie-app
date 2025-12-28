@@ -42,36 +42,17 @@ with st.sidebar:
 
 st.title("🍎 יומן תזונה חכם")
 
-# --- מנגנון הזנה ואיפוס ---
+# --- פתרון לשגיאת האיפוס ---
+# יצירת Key משתנה לשדה הקלט. כשיש שינוי ב-Counter, השדה מתאפס לחלוטין.
+if "input_counter" not in st.session_state:
+    st.session_state.input_counter = 0
 if "preview" not in st.session_state:
     st.session_state.preview = None
 
-# פונקציית עזר לאישור ושמירה
-def save_food():
-    p = st.session_state.preview
-    try:
-        df = conn.read(worksheet="Sheet1")
-        today = datetime.now().strftime("%d/%m/%Y")
-        new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
-                                 "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
-        updated_df = pd.concat([df, new_row], ignore_index=True)
-        conn.update(worksheet="Sheet1", data=updated_df)
-        
-        # איפוס המצב - הדרך הבטוחה
-        st.session_state.preview = None
-        st.session_state.last_processed_query = ""
-        # במקום לשנות את food_entry ישירות, אנחנו פשוט מאפסים את ה-key בריצה הבאה
-        if 'food_entry' in st.session_state:
-            st.session_state.food_entry = ""
-            
-        st.success("נוסף בהצלחה!")
-    except Exception as e:
-        st.error(f"שגיאה בשמירה: {e}")
+# שדה הקלט מקבל Key דינמי
+field_key = f"food_input_{st.session_state.input_counter}"
+food_query = st.text_input("מה אכלת?", key=field_key, placeholder="לדוגמה: חביתה משתי ביצים")
 
-# יצירת השדה
-food_query = st.text_input("מה אכלת?", key="food_entry", placeholder="לדוגמה: חביתה משתי ביצים")
-
-# ניתוח הנתונים
 if food_query and st.session_state.get('last_processed_query') != food_query:
     with st.spinner('מנתח נתונים...'):
         prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
@@ -84,13 +65,28 @@ if food_query and st.session_state.get('last_processed_query') != food_query:
             }
             st.session_state.last_processed_query = food_query
 
-# כפתור האישור
 if st.session_state.preview:
     p = st.session_state.preview
     st.warning(f"🔍 **בדיקה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
-    if st.button("✅ אשר והוסף ליומן", on_click=None):
-        save_food()
-        st.rerun()
+    
+    if st.button("✅ אשר והוסף ליומן"):
+        try:
+            df = conn.read(worksheet="Sheet1")
+            today = datetime.now().strftime("%d/%m/%Y")
+            new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
+                                     "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=updated_df)
+            
+            # --- איפוס חכם ---
+            st.session_state.preview = None
+            st.session_state.last_processed_query = ""
+            st.session_state.input_counter += 1 # שינוי ה-Key גורם ל-Streamlit לנקות את השדה
+            
+            st.success("נוסף בהצלחה!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"שגיאה בשמירה: {e}")
 
 # --- תצוגת נתונים וגרפים ---
 st.divider()
