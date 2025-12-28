@@ -43,16 +43,12 @@ with st.sidebar:
 st.title("🍎 יומן תזונה חכם")
 
 # --- מנגנון הזנה ואיפוס ---
-# אתחול משתני State אם לא קיימים
 if "preview" not in st.session_state:
     st.session_state.preview = None
-if "food_input" not in st.session_state:
-    st.session_state.food_input = ""
 
-# שדה הטקסט מחובר ל-session_state דרך ה-key
+# שימוש ב-key כדי לשלוט באיפוס השדה
 food_query = st.text_input("מה אכלת?", key="food_entry", placeholder="לדוגמה: חביתה משתי ביצים")
 
-# אם המשתמש כתב משהו חדש ולא ניתחנו אותו עדיין
 if food_query and st.session_state.get('last_processed_query') != food_query:
     with st.spinner('מנתח נתונים...'):
         prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
@@ -65,7 +61,6 @@ if food_query and st.session_state.get('last_processed_query') != food_query:
             }
             st.session_state.last_processed_query = food_query
 
-# הצגת כפתור האישור רק אם יש נתונים ב-Preview
 if st.session_state.preview:
     p = st.session_state.preview
     st.warning(f"🔍 **בדיקה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
@@ -79,72 +74,9 @@ if st.session_state.preview:
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(worksheet="Sheet1", data=updated_df)
             
-            # --- הפעולות שביקשת: איפוס והעלמה ---
-            st.session_state.preview = None  # מעלים את כפתור האישור
-            st.session_state.last_processed_query = "" # מאפס את הזיכרון של ה-AI
-            st.session_state.food_entry = "" # מאפס את שדה הטקסט עצמו
+            # איפוס המצב
+            st.session_state.preview = None
+            st.session_state.last_processed_query = ""
+            st.session_state.food_entry = "" # מאפס את שדה הטקסט
             
             st.success("נוסף בהצלחה!")
-            st.rerun() # מרענן את הדף כדי לנקות הכל ויזואלית
-        except Exception as e:
-            st.error(f"שגיאה בשמירה: {e}")
-
-# --- תצוגת נתונים וגרפים ---
-st.divider()
-try:
-    data = conn.read(worksheet="Sheet1", ttl=0)
-    if not data.empty:
-        for c in ['Calories', 'Protein', 'Fat', 'Fiber']:
-            data[c] = pd.to_numeric(data[c], errors='coerce').fillna(0)
-        
-        today_str = datetime.now().strftime("%d/%m/%Y")
-        today_df = data[data['Date'] == today_str]
-        c_cal = int(today_df['Calories'].sum())
-        rem_cal = max(0, total_target - c_cal)
-
-        col_stats, col_donut = st.columns([2, 1])
-        with col_stats:
-            st.subheader(f"📊 סיכום להיום ({today_str})")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("נאכל", f"{c_cal} קק\"ל")
-            m2.metric("נותר", f"{rem_cal} קק\"ל")
-            m3.metric("חלבון", f"{today_df['Protein'].sum():.1f}g")
-        
-        with col_donut:
-            fig = go.Figure(data=[go.Pie(labels=['נאכל', 'נותר'], values=[c_cal, rem_cal], hole=.6, 
-                             marker_colors=['#ff4b4b', '#f0f2f6'], textinfo='none')])
-            fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
-            st.plotly_chart(fig, use_container_width=True)
-
-        st.subheader("📋 ארוחות היום")
-        for idx, row in today_df.iterrows():
-            c_row = st.columns([3, 1, 1, 1, 1, 1])
-            c_row[0].write(f"🍴 {row['Food']}")
-            c_row[1].write(f"🔥 {row['Calories']}")
-            c_row[2].write(f"💪 {row['Protein']}g")
-            
-            with c_row[4]:
-                with st.popover("✏️"):
-                    n_name = st.text_input("שם", value=row['Food'], key=f"e_n_{idx}")
-                    n_cal = st.number_input("קק\"ל", value=int(row['Calories']), key=f"e_c_{idx}")
-                    n_pr = st.number_input("חלבון", value=float(row['Protein']), key=f"e_p_{idx}")
-                    if st.button("שמור", key=f"s_{idx}"):
-                        data.at[idx, 'Food'] = n_name
-                        data.at[idx, 'Calories'] = n_cal
-                        data.at[idx, 'Protein'] = n_pr
-                        conn.update(worksheet="Sheet1", data=data)
-                        st.rerun()
-            
-            if c_row[5].button("🗑️", key=f"d_{idx}"):
-                new_df = data.drop(idx)
-                conn.update(worksheet="Sheet1", data=new_df)
-                st.rerun()
-
-        st.divider()
-        st.subheader("📅 צריכה שבועית")
-        data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
-        weekly_summary = data.dropna(subset=['Date_dt']).groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
-        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
-
-except Exception as e:
-    st.info("ממתין לנתונים...")
