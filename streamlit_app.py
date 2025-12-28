@@ -42,16 +42,15 @@ with st.sidebar:
 
 st.title("🍎 יומן תזונה חכם")
 
-# --- פתרון לשגיאת האיפוס ---
-# יצירת Key משתנה לשדה הקלט. כשיש שינוי ב-Counter, השדה מתאפס לחלוטין.
+# --- מנגנון איפוס חכם ---
 if "input_counter" not in st.session_state:
     st.session_state.input_counter = 0
 if "preview" not in st.session_state:
     st.session_state.preview = None
 
-# שדה הקלט מקבל Key דינמי
-field_key = f"food_input_{st.session_state.input_counter}"
-food_query = st.text_input("מה אכלת?", key=field_key, placeholder="לדוגמה: חביתה משתי ביצים")
+# יצירת מפתח דינמי לשדה הקלט כדי לאפס אותו ללא שגיאה
+input_key = f"food_input_{st.session_state.input_counter}"
+food_query = st.text_input("מה אכלת?", key=input_key, placeholder="לדוגמה: קערת אורז ועדשים")
 
 if food_query and st.session_state.get('last_processed_query') != food_query:
     with st.spinner('מנתח נתונים...'):
@@ -67,7 +66,7 @@ if food_query and st.session_state.get('last_processed_query') != food_query:
 
 if st.session_state.preview:
     p = st.session_state.preview
-    st.warning(f"🔍 **בדיקה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
+    st.warning(f"🔍 **בדיקה לפני שמירה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
     
     if st.button("✅ אשר והוסף ליומן"):
         try:
@@ -78,10 +77,10 @@ if st.session_state.preview:
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(worksheet="Sheet1", data=updated_df)
             
-            # --- איפוס חכם ---
+            # פעולות איפוס: העלאת המונה משנה את המפתח של שדה הטקסט ומרוקנת אותו
             st.session_state.preview = None
             st.session_state.last_processed_query = ""
-            st.session_state.input_counter += 1 # שינוי ה-Key גורם ל-Streamlit לנקות את השדה
+            st.session_state.input_counter += 1
             
             st.success("נוסף בהצלחה!")
             st.rerun()
@@ -101,6 +100,7 @@ try:
         c_cal = int(today_df['Calories'].sum())
         rem_cal = max(0, total_target - c_cal)
 
+        # שורת מדדים וגרף דונאט
         col_stats, col_donut = st.columns([2, 1])
         with col_stats:
             st.subheader(f"📊 סיכום להיום ({today_str})")
@@ -115,6 +115,7 @@ try:
             fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
             st.plotly_chart(fig, use_container_width=True)
 
+        # טבלת ארוחות עם עריכה ומחיקה
         st.subheader("📋 ארוחות היום")
         for idx, row in today_df.iterrows():
             c_row = st.columns([3, 1, 1, 1, 1, 1])
