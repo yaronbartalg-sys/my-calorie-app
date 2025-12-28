@@ -4,13 +4,14 @@ import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import plotly.graph_objects as go
+from google.api_core import exceptions
 
 # הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
 
 # חיבורים
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-flash-lite-latest')
+model = genai.GenerativeModel('gemini-1.5-flash') # שימוש במודל יציב
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- פונקציות חישוב ---
@@ -47,51 +48,63 @@ if "input_counter" not in st.session_state:
     st.session_state.input_counter = 0
 if "preview" not in st.session_state:
     st.session_state.preview = None
+if "last_processed_query" not in st.session_state:
+    st.session_state.last_processed_query = ""
 
-# יצירת מפתח דינמי לשדה הקלט כדי לאפס אותו ללא שגיאה
 input_key = f"food_input_{st.session_state.input_counter}"
-food_query = st.text_input("מה אכלת?", key=input_key, placeholder="לדוגמה: קערת אורז ועדשים")
+food_query = st.text_input("מה אכלת?", key=input_key, placeholder="לדוגמה: 3 כוסות אספרסו")
 
-if food_query and st.session_state.get('last_processed_query') != food_query:
-    with st.spinner('מנתח נתונים...'):
-        prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
-        response = model.generate_content(f"{prompt} \n Input: {food_query}")
-        res = response.text.strip().split(',')
-        if len(res) >= 5:
-            st.session_state.preview = {
-                "name": res[0], "cal": int(res[1]), "prot": float(res[2]),
-                "fat": float(res[3]), "fib": float(res[4])
-            }
-            st.session_state.last_processed_query = food_query
+# פנייה ל-AI רק אם יש טקסט חדש
+if food_query and st.session_state.last_processed_query != food_query:
+    try:
+        with st.spinner('מנתח נתונים...'):
+            prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float), Detected Quantity (Short Hebrew description) separated by commas."
+            response = model.generate_content(f"{prompt} \n Input: {food_query}")
+            res = response.text.strip().split(',')
+            if len(res) >= 6:
+                st.session_state.preview = {
+                    "name": res[0].strip(), 
+                    "cal": int(res[1].strip()), 
+                    "prot": float(res[2].strip()),
+                    "fat": float(res[3].strip()), 
+                    "fib": float(res[4].strip()),
+                    "qty": res[5].strip()
+                }
+                st.session_state.last_processed_query = food_query
+    except exceptions.ResourceExhausted:
+        st.error("⚠️ הגענו למכסת הבקשות החינמית של גוגל. אנא המתן כ-60 שניות ונסה שוב.")
+    except Exception as e:
+        st.error(f"שגיאה בניתוח המנה: {e}")
 
 if st.session_state.preview:
     p = st.session_state.preview
-    st.warning(f"🔍 **בדיקה לפני שמירה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
+    st.warning(f"🔍 **ה-AI זיהה:** {p['qty']} של {p['name']} | 🔥 {p['cal']} קק\"ל")
     
     if st.button("✅ אשר והוסף ליומן"):
         try:
             df = conn.read(worksheet="Sheet1")
             today = datetime.now().strftime("%d/%m/%Y")
-            new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
-                                     "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
+            new_row = pd.DataFrame([{
+                "Date": today, "Food": p['name'], "Quantity": p['qty'],
+                "Calories": p['cal'], "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']
+            }])
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(worksheet="Sheet1", data=updated_df)
             
-            # פעולות איפוס: העלאת המונה משנה את המפתח של שדה הטקסט ומרוקנת אותו
+            # איפוס מוחלט
             st.session_state.preview = None
             st.session_state.last_processed_query = ""
             st.session_state.input_counter += 1
-            
-            st.success("נוסף בהצלחה!")
             st.rerun()
         except Exception as e:
             st.error(f"שגיאה בשמירה: {e}")
 
-# --- תצוגת נתונים וגרפים ---
+# --- תצוגת נתונים ---
 st.divider()
 try:
     data = conn.read(worksheet="Sheet1", ttl=0)
     if not data.empty:
+        if 'Quantity' not in data.columns: data['Quantity'] = "-"
         for c in ['Calories', 'Protein', 'Fat', 'Fiber']:
             data[c] = pd.to_numeric(data[c], errors='coerce').fillna(0)
         
@@ -100,7 +113,6 @@ try:
         c_cal = int(today_df['Calories'].sum())
         rem_cal = max(0, total_target - c_cal)
 
-        # שורת מדדים וגרף דונאט
         col_stats, col_donut = st.columns([2, 1])
         with col_stats:
             st.subheader(f"📊 סיכום להיום ({today_str})")
@@ -115,23 +127,23 @@ try:
             fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
             st.plotly_chart(fig, use_container_width=True)
 
-        # טבלת ארוחות עם עריכה ומחיקה
         st.subheader("📋 ארוחות היום")
         for idx, row in today_df.iterrows():
-            c_row = st.columns([3, 1, 1, 1, 1, 1])
+            c_row = st.columns([2, 1.5, 1, 1, 1, 1])
             c_row[0].write(f"🍴 {row['Food']}")
-            c_row[1].write(f"🔥 {row['Calories']}")
-            c_row[2].write(f"💪 {row['Protein']}g")
+            c_row[1].write(f"⚖️ {row['Quantity']}")
+            c_row[2].write(f"{int(row['Calories'])}")
+            c_row[3].write(f"{row['Protein']}g")
             
             with c_row[4]:
                 with st.popover("✏️"):
                     n_name = st.text_input("שם", value=row['Food'], key=f"e_n_{idx}")
+                    n_qty = st.text_input("כמות", value=row['Quantity'], key=f"e_q_{idx}")
                     n_cal = st.number_input("קק\"ל", value=int(row['Calories']), key=f"e_c_{idx}")
-                    n_pr = st.number_input("חלבון", value=float(row['Protein']), key=f"e_p_{idx}")
                     if st.button("שמור", key=f"s_{idx}"):
                         data.at[idx, 'Food'] = n_name
+                        data.at[idx, 'Quantity'] = n_qty
                         data.at[idx, 'Calories'] = n_cal
-                        data.at[idx, 'Protein'] = n_pr
                         conn.update(worksheet="Sheet1", data=data)
                         st.rerun()
             
@@ -139,12 +151,6 @@ try:
                 new_df = data.drop(idx)
                 conn.update(worksheet="Sheet1", data=new_df)
                 st.rerun()
-
-        st.divider()
-        st.subheader("📅 צריכה שבועית")
-        data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
-        weekly_summary = data.dropna(subset=['Date_dt']).groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
-        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
 
 except Exception as e:
     st.info("ממתין לנתונים...")
