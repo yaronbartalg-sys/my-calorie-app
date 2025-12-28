@@ -73,7 +73,7 @@ if st.session_state.preview:
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(worksheet="Sheet1", data=updated_df)
             
-            # איפוס המצב והשדה
+            # איפוס המצב והשדה כפי שביקשת
             st.session_state.preview = None
             st.session_state.last_processed_query = ""
             st.session_state.food_entry = ""
@@ -138,4 +138,7 @@ try:
         st.subheader("📅 צריכה שבועית")
         data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
         weekly_summary = data.dropna(subset=['Date_dt']).groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
-        st.bar_chart(data=weekly_summary, x='Date_dt
+        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
+
+except Exception as e:
+    st.info("ממתין לנתונים...")
