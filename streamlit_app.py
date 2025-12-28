@@ -24,26 +24,36 @@ def calculate_targets(weight, height, age, gender):
 
 # --- סרגל צד (Sidebar) ---
 with st.sidebar:
-    st.header("👤 נתונים אישיים")
-    gender = st.radio("מין", ["זכר", "נקבה"])
-    weight = st.number_input("משקל (ק\"ג)", value=80.0)
-    height = st.number_input("גובה (ס\"מ)", value=175)
-    age = st.number_input("גיל", value=30)
+    st.header("👤 פרופיל משתמש")
     
-    t_cal, t_prot, t_fat, t_fib = calculate_targets(weight, height, age, gender)
+    # שימוש ב-Expander כדי להחביא את שדות ההזנה אחרי שממלאים
+    with st.expander("עדכון נתונים אישיים"):
+        s_gender = st.radio("מין", ["זכר", "נקבה"], index=0)
+        s_weight = st.number_input("משקל (ק\"ג)", value=80.0, step=0.1)
+        s_height = st.number_input("גובה (ס\"מ)", value=175, step=1)
+        s_age = st.number_input("גיל", value=30, step=1)
+    
+    # תצוגה קצרה של הנתונים הנוכחיים
+    st.write(f"📊 **נתונים:** {s_gender} | {s_weight} ק\"ג | {s_height} ס\"מ | גיל {s_age}")
+    
+    t_cal, t_prot, t_fat, t_fib = calculate_targets(s_weight, s_height, s_age, s_gender)
     
     st.divider()
     steps = st.number_input("צעדים היום", value=0, step=500)
     step_bonus = int(steps * 0.04) 
     total_target = t_cal + step_bonus
-    st.info(f"🎯 יעד קלוריות כולל: {total_target}")
+    st.info(f"🎯 יעד קלוריות: {total_target}")
 
 st.title("🍎 יומן תזונה חכם")
 
-# --- ממשק הזנה עם בדיקה לפני שמירה ---
-food_query = st.text_input("מה אכלת?", placeholder="לדוגמה: חביתה משתי ביצים")
+# --- ממשק הזנה עם ניקוי שדה ---
+# משתמשים ב-session_state כדי לשלוט בערך של השדה
+if "food_input_value" not in st.session_state:
+    st.session_state.food_input_value = ""
 
-if food_query:
+food_query = st.text_input("מה אכלת?", value=st.session_state.food_input_value, placeholder="לדוגמה: חביתה משתי ביצים")
+
+if food_query and food_query != "":
     if 'last_q' not in st.session_state or st.session_state.last_q != food_query:
         with st.spinner('מנתח נתונים...'):
             prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
@@ -67,8 +77,11 @@ if food_query:
                                          "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
                 updated_df = pd.concat([df, new_row], ignore_index=True)
                 conn.update(worksheet="Sheet1", data=updated_df)
+                
+                # ניקוי ה-Preview והשדה
+                st.session_state.last_q = ""
+                st.session_state.preview = None
                 st.success("נוסף!")
-                del st.session_state.preview
                 st.rerun()
             except Exception as e:
                 st.error(f"שגיאה בשמירה: {e}")
@@ -86,7 +99,6 @@ try:
         c_cal = int(today_df['Calories'].sum())
         rem_cal = max(0, total_target - c_cal)
 
-        # --- שורת מדדים וגרף דונאט ---
         col_stats, col_donut = st.columns([2, 1])
         with col_stats:
             st.subheader(f"📊 סיכום להיום ({today_str})")
@@ -101,7 +113,6 @@ try:
             fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
             st.plotly_chart(fig, use_container_width=True)
 
-        # --- רשימת ארוחות עם עריכה ומחיקה ---
         st.subheader("📋 ארוחות היום")
         for idx, row in today_df.iterrows():
             c_row = st.columns([3, 1, 1, 1, 1, 1])
@@ -126,7 +137,6 @@ try:
                 conn.update(worksheet="Sheet1", data=new_df)
                 st.rerun()
 
-        # --- סיכום שבועי ---
         st.divider()
         st.subheader("📅 צריכה שבועית")
         data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
