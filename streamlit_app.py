@@ -25,17 +25,13 @@ def calculate_targets(weight, height, age, gender):
 # --- סרגל צד (Sidebar) ---
 with st.sidebar:
     st.header("👤 פרופיל משתמש")
-    
-    # שימוש ב-Expander כדי להחביא את שדות ההזנה אחרי שממלאים
     with st.expander("עדכון נתונים אישיים"):
         s_gender = st.radio("מין", ["זכר", "נקבה"], index=0)
         s_weight = st.number_input("משקל (ק\"ג)", value=80.0, step=0.1)
         s_height = st.number_input("גובה (ס\"מ)", value=175, step=1)
         s_age = st.number_input("גיל", value=30, step=1)
     
-    # תצוגה קצרה של הנתונים הנוכחיים
     st.write(f"📊 **נתונים:** {s_gender} | {s_weight} ק\"ג | {s_height} ס\"מ | גיל {s_age}")
-    
     t_cal, t_prot, t_fat, t_fib = calculate_targets(s_weight, s_height, s_age, s_gender)
     
     st.divider()
@@ -46,45 +42,52 @@ with st.sidebar:
 
 st.title("🍎 יומן תזונה חכם")
 
-# --- ממשק הזנה עם ניקוי שדה ---
-# משתמשים ב-session_state כדי לשלוט בערך של השדה
-if "food_input_value" not in st.session_state:
-    st.session_state.food_input_value = ""
+# --- מנגנון הזנה ואיפוס ---
+# אתחול משתני State אם לא קיימים
+if "preview" not in st.session_state:
+    st.session_state.preview = None
+if "food_input" not in st.session_state:
+    st.session_state.food_input = ""
 
-food_query = st.text_input("מה אכלת?", value=st.session_state.food_input_value, placeholder="לדוגמה: חביתה משתי ביצים")
+# שדה הטקסט מחובר ל-session_state דרך ה-key
+food_query = st.text_input("מה אכלת?", key="food_entry", placeholder="לדוגמה: חביתה משתי ביצים")
 
-if food_query and food_query != "":
-    if 'last_q' not in st.session_state or st.session_state.last_q != food_query:
-        with st.spinner('מנתח נתונים...'):
-            prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
-            response = model.generate_content(f"{prompt} \n Input: {food_query}")
-            res = response.text.strip().split(',')
-            if len(res) >= 5:
-                st.session_state.preview = {
-                    "name": res[0], "cal": int(res[1]), "prot": float(res[2]),
-                    "fat": float(res[3]), "fib": float(res[4])
-                }
-                st.session_state.last_q = food_query
+# אם המשתמש כתב משהו חדש ולא ניתחנו אותו עדיין
+if food_query and st.session_state.get('last_processed_query') != food_query:
+    with st.spinner('מנתח נתונים...'):
+        prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float) separated by commas."
+        response = model.generate_content(f"{prompt} \n Input: {food_query}")
+        res = response.text.strip().split(',')
+        if len(res) >= 5:
+            st.session_state.preview = {
+                "name": res[0], "cal": int(res[1]), "prot": float(res[2]),
+                "fat": float(res[3]), "fib": float(res[4])
+            }
+            st.session_state.last_processed_query = food_query
 
-    if 'preview' in st.session_state:
-        p = st.session_state.preview
-        st.warning(f"🔍 **בדיקה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
-        if st.button("✅ אשר והוסף ליומן"):
-            try:
-                df = conn.read(worksheet="Sheet1")
-                today = datetime.now().strftime("%d/%m/%Y")
-                new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
-                                         "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
-                updated_df = pd.concat([df, new_row], ignore_index=True)
-                conn.update(worksheet="Sheet1", data=updated_df)
-                
-                # ניקוי ה-Preview והשדה
-                st.session_state.last_q = ""
-                st.session_state.preview = None
-                st.success("נוסף!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"שגיאה בשמירה: {e}")
+# הצגת כפתור האישור רק אם יש נתונים ב-Preview
+if st.session_state.preview:
+    p = st.session_state.preview
+    st.warning(f"🔍 **בדיקה:** {p['name']} | 🔥 {p['cal']} קק\"ל | 💪 {p['prot']}g חלבון")
+    
+    if st.button("✅ אשר והוסף ליומן"):
+        try:
+            df = conn.read(worksheet="Sheet1")
+            today = datetime.now().strftime("%d/%m/%Y")
+            new_row = pd.DataFrame([{"Date": today, "Food": p['name'], "Calories": p['cal'], 
+                                     "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']}])
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=updated_df)
+            
+            # --- הפעולות שביקשת: איפוס והעלמה ---
+            st.session_state.preview = None  # מעלים את כפתור האישור
+            st.session_state.last_processed_query = "" # מאפס את הזיכרון של ה-AI
+            st.session_state.food_entry = "" # מאפס את שדה הטקסט עצמו
+            
+            st.success("נוסף בהצלחה!")
+            st.rerun() # מרענן את הדף כדי לנקות הכל ויזואלית
+        except Exception as e:
+            st.error(f"שגיאה בשמירה: {e}")
 
 # --- תצוגת נתונים וגרפים ---
 st.divider()
@@ -123,25 +126,4 @@ try:
             with c_row[4]:
                 with st.popover("✏️"):
                     n_name = st.text_input("שם", value=row['Food'], key=f"e_n_{idx}")
-                    n_cal = st.number_input("קק\"ל", value=int(row['Calories']), key=f"e_c_{idx}")
-                    n_pr = st.number_input("חלבון", value=float(row['Protein']), key=f"e_p_{idx}")
-                    if st.button("שמור", key=f"s_{idx}"):
-                        data.at[idx, 'Food'] = n_name
-                        data.at[idx, 'Calories'] = n_cal
-                        data.at[idx, 'Protein'] = n_pr
-                        conn.update(worksheet="Sheet1", data=data)
-                        st.rerun()
-            
-            if c_row[5].button("🗑️", key=f"d_{idx}"):
-                new_df = data.drop(idx)
-                conn.update(worksheet="Sheet1", data=new_df)
-                st.rerun()
-
-        st.divider()
-        st.subheader("📅 צריכה שבועית")
-        data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
-        weekly_summary = data.dropna(subset=['Date_dt']).groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
-        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
-
-except Exception as e:
-    st.info("ממתין לנתונים...")
+                    n_cal = st.number_input("קק\"ל", value=int(row['Calories']),
