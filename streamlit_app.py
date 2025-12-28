@@ -126,4 +126,25 @@ try:
             with c_row[4]:
                 with st.popover("✏️"):
                     n_name = st.text_input("שם", value=row['Food'], key=f"e_n_{idx}")
-                    n_cal = st.number_input("קק\"ל", value=int(row['Calories']),
+                    n_cal = st.number_input("קק\"ל", value=int(row['Calories']), key=f"e_c_{idx}")
+                    n_pr = st.number_input("חלבון", value=float(row['Protein']), key=f"e_p_{idx}")
+                    if st.button("שמור", key=f"s_{idx}"):
+                        data.at[idx, 'Food'] = n_name
+                        data.at[idx, 'Calories'] = n_cal
+                        data.at[idx, 'Protein'] = n_pr
+                        conn.update(worksheet="Sheet1", data=data)
+                        st.rerun()
+            
+            if c_row[5].button("🗑️", key=f"d_{idx}"):
+                new_df = data.drop(idx)
+                conn.update(worksheet="Sheet1", data=new_df)
+                st.rerun()
+
+        st.divider()
+        st.subheader("📅 צריכה שבועית")
+        data['Date_dt'] = pd.to_datetime(data['Date'], format="%d/%m/%Y", errors='coerce')
+        weekly_summary = data.dropna(subset=['Date_dt']).groupby('Date_dt')['Calories'].sum().reset_index().tail(7)
+        st.bar_chart(data=weekly_summary, x='Date_dt', y='Calories', color="#ff4b4b")
+
+except Exception as e:
+    st.info("ממתין לנתונים...")
