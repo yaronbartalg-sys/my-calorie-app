@@ -10,14 +10,13 @@ from google.api_core import exceptions
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
 
 # 2. הגדרת מודל חכמה
+# 2. הגדרת מודל חכמה - תיקון ל-404
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 @st.cache_resource
 def get_model():
-    try:
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except:
-        return genai.GenerativeModel('gemini-pro')
+    # ניסיון להשתמש בשם מודל ללא קידומות, שמתאים לגרסה היציבה
+    return genai.GenerativeModel('gemini-1.5-flash')
 
 model = get_model()
 conn = st.connection("gsheets", type=GSheetsConnection)
