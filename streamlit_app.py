@@ -8,23 +8,38 @@ import plotly.graph_objects as go
 # 1. הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
 
-# 2. הגדרת AI - ניסיון פתרון ללופ ה-404
+# 2. הגדרת AI - פתרון דינמי לשגיאת 404
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# שימוש בשם המלא שכולל את הקידומת models/
-# זה בדרך כלל פותר את הבעיה כשה-SDK נמצא בגרסת בטא
-try:
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
-except Exception:
+@st.cache_resource
+def find_available_model():
     try:
-        model = genai.GenerativeModel('models/gemini-pro')
+        # מבקש מגוגל את רשימת המודלים הזמינים עבור ה-Key שלך
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # עדיפות 1: Flash 1.5
+        for m in available_models:
+            if "gemini-1.5-flash" in m:
+                return genai.GenerativeModel(m)
+        
+        # עדיפות 2: כל מודל Gemini אחר שזמין
+        for m in available_models:
+            if "gemini" in m:
+                return genai.GenerativeModel(m)
+                
+        # מוצא אחרון אם הרשימה ריקה
+        return genai.GenerativeModel('gemini-pro')
     except Exception as e:
-        st.error(f"שגיאה קריטית בחיבור למודל: {e}")
+        # אם אפילו אי אפשר לרשום את המודלים, נלך על השם הכי בסיסי
+        return genai.GenerativeModel('gemini-pro')
+
+model = find_available_model()
+
+# הדפסת שם המודל שנבחר (רק לדיבאג, אפשר להסיר אחר כך)
+st.sidebar.caption(f"Connected to: {model.model_name}")
 
 # 3. חיבור לגיליון גוגל
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-# --- המשך הקוד (פונקציות חישוב וטעינת פרופיל) ללא שינוי ---
 
 # 4. פונקציות חישוב
 def calculate_targets(weight, height, age, gender):
