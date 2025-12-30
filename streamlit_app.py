@@ -43,7 +43,7 @@ try:
         init_steps = int(p_data['Steps'])
     else:
         init_gender, init_weight, init_height, init_age, init_steps = "נקבה", 60.0, 165, 25, 5000
-except:
+except Exception:
     init_gender, init_weight, init_height, init_age, init_steps = "נקבה", 60.0, 165, 25, 5000
 
 # 5. סרגל צד (Sidebar)
@@ -98,7 +98,6 @@ if food_query and st.session_state.last_query != food_query:
     except Exception as e:
         st.error(f"שגיאה בניתוח: {e}")
 
-# פתרון לשגיאת name 'p' is not defined - הגדרת p רק בתוך הבלוק המתאים
 if st.session_state.preview:
     p = st.session_state.preview
     st.info(f"🔍 זוהה: {p['qty']} {p['name']} ({p['cal']} קק\"ל)")
@@ -131,6 +130,7 @@ st.divider()
 try:
     data = conn.read(worksheet="Sheet1", ttl=0)
     if not data.empty:
+        # וידוא עמודות מספריות
         for c in ['Calories', 'Protein', 'Fat', 'Fiber']:
             data[c] = pd.to_numeric(data[c], errors='coerce').fillna(0)
         
@@ -152,3 +152,11 @@ try:
             fig = go.Figure(data=[go.Pie(labels=['נאכל', 'נותר'], values=[c_cal, rem_cal], hole=.6, 
                              marker_colors=['#ff4b4b', '#f0f2f6'], textinfo='none')])
             fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("📋 ארוחות היום")
+        st.dataframe(today_df[['Food', 'Quantity', 'Calories', 'Protein']], use_container_width=True)
+    else:
+        st.info("היומן ריק. התחילו להזין ארוחות!")
+except Exception as e:
+    st.info("ממתין לנתונים ביומן...")
