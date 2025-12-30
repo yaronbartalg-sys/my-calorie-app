@@ -115,6 +115,29 @@ if st.session_state.preview:
     st.info(f"🔍 זוהה: {p['qty']} {p['name']} ({p['cal']} קק\"ל)")
     if st.button("✅ אשר והוסף ליומן"):
         try:
+            # קריאת הנתונים הקיימים
             df = conn.read(worksheet="Sheet1")
+            
+            # יצירת השורה החדשה עם תאריך תקין
             new_row = pd.DataFrame([{
-                "Date": datetime.now().strftime("%d/%m/%Y
+                "Date": datetime.now().strftime("%d/%m/%Y"), # סגירת המירכאות והסוגריים כאן
+                "Food": p['name'], 
+                "Quantity": p['qty'], 
+                "Calories": p['cal'], 
+                "Protein": p['prot'], 
+                "Fat": p['fat'], 
+                "Fiber": p['fib']
+            }])
+            
+            # חיבור השורה החדשה ועדכון הגליון
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=updated_df)
+            
+            # איפוס המצב ומעבר לריצה חדשה
+            st.session_state.preview = None
+            st.session_state.last_query = ""
+            st.session_state.input_counter += 1
+            st.success("נוסף בהצלחה!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"שגיאה בשמירה: {e}")
