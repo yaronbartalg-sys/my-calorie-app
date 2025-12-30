@@ -6,34 +6,25 @@ from datetime import datetime
 import plotly.graph_objects as go
 from google.api_core import exceptions
 
-# הגדרות דף
+# 1. הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
 
-# --- הגדרת מודל חכמה למניעת 404 ---
+# 2. הגדרת מודל חכמה למניעת 404
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 @st.cache_resource
 def get_model():
-    # רשימת עדיפויות למודלים
-    model_options = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
-    
-    # ניסיון למצוא מודל זמין מתוך הרשימה של גוגל
     try:
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        for opt in model_options:
-            # בודק אם השם קיים ברשימת המודלים (עם או בלי הקידומת models/)
-            if any(opt in m for m in available_models):
-                return genai.GenerativeModel(opt)
+        # ניסיון להשתמש במודל החדש ביותר
+        return genai.GenerativeModel('gemini-1.5-flash')
     except:
-        # אם אין גישה לרשימה, נלך על בטוח
+        # גיבוי למודל היציב הישן
         return genai.GenerativeModel('gemini-pro')
-    
-    return genai.GenerativeModel('gemini-pro')
 
 model = get_model()
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- פונקציות חישוב ---
+# 3. פונקציות חישוב
 def calculate_targets(weight, height, age, gender):
     if gender == "זכר":
         bmr = 10 * weight + 6.25 * height - 5 * age + 5
@@ -42,7 +33,7 @@ def calculate_targets(weight, height, age, gender):
     tdee = int(bmr * 1.2)
     return tdee, int(weight * 1.8), int((tdee * 0.25) / 9), (30 if gender == "זכר" else 25)
 
-# --- טעינת פרופיל (שימור נתונים) ---
+# 4. טעינת פרופיל מהגיליון (לשונית Profile)
 try:
     profile_df = conn.read(worksheet="Profile", ttl=0)
     if not profile_df.empty:
@@ -57,7 +48,7 @@ try:
 except:
     init_gender, init_weight, init_height, init_age, init_steps = "נקבה", 60.0, 165, 25, 5000
 
-# --- סרגל צד (Sidebar) ---
+# 5. סרגל צד (Sidebar)
 with st.sidebar:
     st.header("👤 פרופיל משתמש")
     with st.expander("עדכון נתונים אישיים"):
@@ -67,31 +58,37 @@ with st.sidebar:
         s_age = st.number_input("גיל", value=init_age, step=1)
         s_steps = st.number_input("יעד צעדים יומי", value=init_steps, step=500)
         
-        if st.button("💾 שמור נתונים"):
+        if st.button("💾 שמור נתונים לצמיתות"):
             new_profile = pd.DataFrame([{
                 "Gender": s_gender, "Weight": s_weight, "Height": s_height, 
                 "Age": s_age, "Steps": s_steps
             }])
             conn.update(worksheet="Profile", data=new_profile)
-            st.success("נשמר!")
+            st.success("הנתונים נשמרו בגיליון!")
             st.rerun()
     
     t_cal, t_prot, t_fat, t_fib = calculate_targets(s_weight, s_height, s_age, s_gender)
     total_target = t_cal + int(s_steps * 0.04)
-    st.metric("🎯 יעד קלוריות", f"{total_target}")
+    st.metric("🎯 יעד קלוריות יומי", f"{total_target}")
+    st.write(f"💪 יעד חלבון: {t_prot}g")
 
-# --- הזנה (Rest of your code) ---
 st.title("🍎 יומן תזונה חכם")
-if "input_counter" not in st.session_state: st.session_state.input_counter = 0
-if "preview" not in st.session_state: st.session_state.preview = None
+
+# 6. מנגנון הזנה ואיפוס
+if "input_counter" not in st.session_state:
+    st.session_state.input_counter = 0
+if "preview" not in st.session_state:
+    st.session_state.preview = None
+if "last_query" not in st.session_state:
+    st.session_state.last_query = ""
 
 input_key = f"food_input_{st.session_state.input_counter}"
-food_query = st.text_input("מה אכלת?", key=input_key)
+food_query = st.text_input("מה אכלת?", key=input_key, placeholder="לדוגמה: 3 כוסות אספרסו")
 
-if food_query and st.session_state.get('last_query') != food_query:
+if food_query and st.session_state.last_query != food_query:
     try:
         with st.spinner('מנתח...'):
-            prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float), Quantity (Hebrew) separated by commas."
+            prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float), Detected Quantity (Hebrew) separated by commas."
             response = model.generate_content(f"{prompt} \n Input: {food_query}")
             res = response.text.strip().split(',')
             if len(res) >= 6:
@@ -107,4 +104,8 @@ if food_query and st.session_state.get('last_query') != food_query:
 if st.session_state.preview:
     p = st.session_state.preview
     st.info(f"🔍 זוהה: {p['qty']} {p['name']} ({p['cal']} קק\"ל)")
-    if st.button("✅ הוסף"):
+    if st.button("✅ אשר והוסף ליומן"):
+        try:
+            df = conn.read(worksheet="Sheet1")
+            new_row = pd.DataFrame([{
+                "Date": datetime.now().strftime("%d/%m/%Y
