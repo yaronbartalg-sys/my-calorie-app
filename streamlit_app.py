@@ -8,18 +8,23 @@ import plotly.graph_objects as go
 # 1. הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
 
-# 2. הגדרת AI ומודל (הגדרה ישירה למניעת שגיאת undefined)
+# 2. הגדרת AI - ניסיון פתרון ללופ ה-404
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# נשתמש ב-gemini-1.5-flash כברירת מחדל
+# שימוש בשם המלא שכולל את הקידומת models/
+# זה בדרך כלל פותר את הבעיה כשה-SDK נמצא בגרסת בטא
 try:
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
 except Exception:
-    # אם יש בעיה בגרסה, נשתמש ב-gemini-pro הישן והיציב
-    model = genai.GenerativeModel('gemini-pro')
+    try:
+        model = genai.GenerativeModel('models/gemini-pro')
+    except Exception as e:
+        st.error(f"שגיאה קריטית בחיבור למודל: {e}")
 
 # 3. חיבור לגיליון גוגל
 conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- המשך הקוד (פונקציות חישוב וטעינת פרופיל) ללא שינוי ---
 
 # 4. פונקציות חישוב
 def calculate_targets(weight, height, age, gender):
