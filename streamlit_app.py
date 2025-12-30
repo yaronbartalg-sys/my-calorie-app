@@ -4,27 +4,24 @@ import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import plotly.graph_objects as go
-from google.api_core import exceptions
 
 # 1. הגדרות דף
 st.set_page_config(page_title="מחשבון תזונה AI", layout="wide")
 
-# 2. הגדרת מודל חכמה
-# 2. הגדרת מודל חכמה - תיקון ל-404
+# 2. הגדרת AI ומודל (הגדרה ישירה למניעת שגיאת undefined)
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-@st.cache_resource
-def get_model():
-    try:
-        # ניסיון ראשון - המודל המהיר
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except:
-        # אם נכשל (404), חזרה למודל הפרו היציב שקיים בכל הגרסאות
-        return genai.GenerativeModel('gemini-pro')
+# נשתמש ב-gemini-1.5-flash כברירת מחדל
+try:
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception:
+    # אם יש בעיה בגרסה, נשתמש ב-gemini-pro הישן והיציב
+    model = genai.GenerativeModel('gemini-pro')
 
+# 3. חיבור לגיליון גוגל
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. פונקציות חישוב
+# 4. פונקציות חישוב
 def calculate_targets(weight, height, age, gender):
     if gender == "זכר":
         bmr = 10 * weight + 6.25 * height - 5 * age + 5
@@ -33,7 +30,7 @@ def calculate_targets(weight, height, age, gender):
     tdee = int(bmr * 1.2)
     return tdee, int(weight * 1.8), int((tdee * 0.25) / 9), (30 if gender == "זכר" else 25)
 
-# 4. טעינת פרופיל מהגיליון
+# 5. טעינת פרופיל מהגיליון
 try:
     profile_df = conn.read(worksheet="Profile", ttl=0)
     if not profile_df.empty:
@@ -48,7 +45,7 @@ try:
 except Exception:
     init_gender, init_weight, init_height, init_age, init_steps = "נקבה", 60.0, 165, 25, 5000
 
-# 5. סרגל צד (Sidebar)
+# 6. סרגל צד (Sidebar)
 with st.sidebar:
     st.header("👤 פרופיל משתמש")
     with st.expander("עדכון נתונים אישיים"):
@@ -73,7 +70,7 @@ with st.sidebar:
 
 st.title("🍎 יומן תזונה חכם")
 
-# 6. מנגנון הזנה
+# 7. מנגנון הזנה
 if "input_counter" not in st.session_state:
     st.session_state.input_counter = 0
 if "preview" not in st.session_state:
@@ -108,37 +105,26 @@ if st.session_state.preview:
             df = conn.read(worksheet="Sheet1")
             today = datetime.now().strftime("%d/%m/%Y")
             new_row = pd.DataFrame([{
-                "Date": today, 
-                "Food": p['name'], 
-                "Quantity": p['qty'], 
-                "Calories": p['cal'], 
-                "Protein": p['prot'], 
-                "Fat": p['fat'], 
-                "Fiber": p['fib']
+                "Date": today, "Food": p['name'], "Quantity": p['qty'], 
+                "Calories": p['cal'], "Protein": p['prot'], "Fat": p['fat'], "Fiber": p['fib']
             }])
-            updated_df = pd.concat([df, new_row], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=updated_df)
-            
+            conn.update(worksheet="Sheet1", data=pd.concat([df, new_row], ignore_index=True))
             st.session_state.preview = None
             st.session_state.last_query = ""
             st.session_state.input_counter += 1
-            st.success("נוסף בהצלחה!")
             st.rerun()
         except Exception as e:
             st.error(f"שגיאה בשמירה: {e}")
 
-# 7. תצוגת נתונים וגרפים
+# 8. תצוגת נתונים
 st.divider()
 try:
     data = conn.read(worksheet="Sheet1", ttl=0)
     if not data.empty:
-        # וידוא עמודות מספריות
         for c in ['Calories', 'Protein', 'Fat', 'Fiber']:
             data[c] = pd.to_numeric(data[c], errors='coerce').fillna(0)
-        
         today_str = datetime.now().strftime("%d/%m/%Y")
         today_df = data[data['Date'] == today_str]
-        
         c_cal = int(today_df['Calories'].sum())
         rem_cal = max(0, total_target - c_cal)
 
@@ -149,16 +135,14 @@ try:
             m1.metric("נאכל", f"{c_cal}")
             m2.metric("נותר", f"{rem_cal}")
             m3.metric("חלבון", f"{today_df['Protein'].sum():.1f}g")
-        
         with col2:
             fig = go.Figure(data=[go.Pie(labels=['נאכל', 'נותר'], values=[c_cal, rem_cal], hole=.6, 
                              marker_colors=['#ff4b4b', '#f0f2f6'], textinfo='none')])
             fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
             st.plotly_chart(fig, use_container_width=True)
-
         st.subheader("📋 ארוחות היום")
         st.dataframe(today_df[['Food', 'Quantity', 'Calories', 'Protein']], use_container_width=True)
     else:
-        st.info("היומן ריק. התחילו להזין ארוחות!")
+        st.info("היומן ריק.")
 except Exception as e:
-    st.info("ממתין לנתונים ביומן...")
+    st.info("ממתין לנתונים...")
