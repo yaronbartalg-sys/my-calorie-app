@@ -86,20 +86,29 @@ input_key = f"food_input_{st.session_state.input_counter}"
 food_query = st.text_input("מה אכלת?", key=input_key, placeholder="לדוגמה: 3 כוסות אספרסו")
 
 if food_query and st.session_state.last_query != food_query:
-    try:
-        with st.spinner('מנתח...'):
-            prompt = "Return ONLY: Food Name (Hebrew), Calories (int), Protein (float), Fat (float), Fiber (float), Detected Quantity (Hebrew) separated by commas."
-            response = model.generate_content(f"{prompt} \n Input: {food_query}")
-            res = response.text.strip().split(',')
-            if len(res) >= 6:
-                st.session_state.preview = {
-                    "name": res[0].strip(), "cal": int(res[1].strip()), 
-                    "prot": float(res[2].strip()), "fat": float(res[3].strip()), 
-                    "fib": float(res[4].strip()), "qty": res[5].strip()
-                }
-                st.session_state.last_query = food_query
-    except Exception as e:
-        st.error(f"שגיאה בניתוח: {e}")
+   try:
+            df = conn.read(worksheet="Sheet1")
+            today = datetime.now().strftime("%d/%m/%Y") # כאן היה חסר סימן המירכאות
+            new_row = pd.DataFrame([{
+                "Date": today, 
+                "Food": p['name'], 
+                "Quantity": p['qty'], 
+                "Calories": p['cal'], 
+                "Protein": p['prot'], 
+                "Fat": p['fat'], 
+                "Fiber": p['fib']
+            }])
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=updated_df)
+            
+            # איפוס המצב
+            st.session_state.preview = None
+            st.session_state.last_query = ""
+            st.session_state.input_counter += 1
+            st.success("נוסף בהצלחה!")
+            st.rerun()
+   except Exception as e:
+            st.error(f"שגיאה בשמירה: {e}")
 
 if st.session_state.preview:
     p = st.session_state.preview
