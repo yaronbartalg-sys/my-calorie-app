@@ -15,10 +15,13 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 @st.cache_resource
 def get_model():
-    # ניסיון להשתמש בשם מודל ללא קידומות, שמתאים לגרסה היציבה
-    return genai.GenerativeModel('gemini-1.5-flash')
+    try:
+        # ניסיון ראשון - המודל המהיר
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except:
+        # אם נכשל (404), חזרה למודל הפרו היציב שקיים בכל הגרסאות
+        return genai.GenerativeModel('gemini-pro')
 
-model = get_model()
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 3. פונקציות חישוב
